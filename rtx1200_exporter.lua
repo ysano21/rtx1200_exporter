@@ -61,6 +61,10 @@ while 1 do
 			if not ok then error("command failed") end
 			local cpu5sec, cpu1min, cpu5min, memused = string.match(result, /CPU:\s*(\d+)%\(5sec\)\s*(\d+)%\(1min\)\s*(\d+)%\(5min\)\s*ÉÅÉÇÉä:\s*(\d+)% used/)
 			local temperature = string.match(result, /‚ûëÃì‡â∑ìx\(.*\): (\d+)/)
+			if (temperature == nil)
+			then
+				temperature = 0
+			end
 			local luacount = collectgarbage("count")
 
 			local sent, err = control:send(
@@ -100,19 +104,21 @@ while 1 do
 			end
 
 			local ok, result = rt.command("show ip connection summary")
+			local v4session, v4channel
 			if (result == nil) then
-				local v4session = 0
-				local v4channel = 0
+				v4session = 0
+				v4channel = 0
 			else
-				local v4session, v4channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
+				v4session, v4channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
 			end
 
 			local ok, result = rt.command("show ipv6 connection summary")
+			local v6session, v6channel
 			if (result == nil) then
-				local v6session = 0
-				local v6channel = 0
+				v6session = 0
+				v6channel = 0
 			else
-				local v6session, v6channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
+				v6session, v6channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
 			end
 
 			local sent, err = control:send(
