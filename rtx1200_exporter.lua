@@ -85,7 +85,7 @@ while 1 do
 			)
 			if err then error(err) end
 
-			for n = 1, 3 do
+			for n = 1, 2 do
 				local ok, result = rt.command($"show status lan${n}")
 				if not ok then error("command failed") end
 				local txpackets, txoctets = string.match(result, /送信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
@@ -100,10 +100,20 @@ while 1 do
 			end
 
 			local ok, result = rt.command("show ip connection summary")
-			local v4session, v4channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
+			if (result == nil) then
+				local v4session = 0
+				local v4channel = 0
+			else
+				local v4session, v4channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
+			end
 
 			local ok, result = rt.command("show ipv6 connection summary")
-			local v6session, v6channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
+			if (result == nil) then
+				local v6session = 0
+				local v6channel = 0
+			else
+				local v6session, v6channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
+			end
 
 			local sent, err = control:send(
 				"# TYPE ipSession counter\n"..
@@ -128,6 +138,25 @@ while 1 do
 				$"ipDhcp{type=\"available\"} ${dhcpavailable}\n"
 			)
 			if err then error(err) end
+
+			local sent, err = control:send(
+				"# TYPE natDescriptorCurrent counter\n"..
+				"# TYPE natDescriptorMax counter\n"
+			)
+			if err then error(err) end
+			local ok, result = rt.command("show nat descriptor address all")
+			if not ok then print("command failed") end
+			for port in string.gmatch(result, "参照NATディスクリプタ : (%d+),") do
+				local ok, result = rt.command($"show nat descriptor masquerade port ${port} summary")
+				if not ok then print("command failed") end
+				local cur, max = string.match(result, "(%d+)\/%s+(%d+)") do
+					local sent, err = control:send(
+						$"natDescriptorCurrent{port=\"${port}\"} ${cur}\n"..
+						$"natDescriptorMax{port=\"${port}\"} ${max}\n"
+					)
+					if err then error(err) end
+				end
+			end
 
 		elseif string.find(request, "GET / ") == 1 then
 			local sent, err = control:send(
