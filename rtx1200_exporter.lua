@@ -12,6 +12,7 @@ schedule at 1 startup * lua /rtx1200_exporter.lua
 
 -- start prometheus exporter
 
+-- config
 LUADEBUG = os.getenv("DEBUG")
 if ((LUADEBUG == nil) or (LUADEBUG == "0"))
 then
@@ -20,6 +21,7 @@ else
   syslogout = "on"
 end
 
+-- tcp socket ready
 tcp = rt.socket.tcp()
 tcp:setoption("reuseaddr", true)
 res, err = tcp:bind("*", 9100)
@@ -33,6 +35,7 @@ if not res and err then
 	os.exit(1)
 end
 
+-- until HTTP Method
 while 1 do
 	local control = assert(tcp:accept())
 
@@ -93,20 +96,25 @@ while 1 do
 
 			local sent, err = control:send(
 				"# TYPE ifOutOctets counter\n"..
-				"# TYPE ifInOctets counter\n"
+				"# TYPE ifInOctets counter\n"..
+				"# TYPE ifInOverflow counter\n"
 			)
 			if err then error(err) end
 
+			-- nvr500/rtx830:2 rtx1200:3
 			for n = 1, 2 do
 				local ok, result = rt.command($"show status lan${n}", $"${syslogout}")
-				if not ok then error("command failed") end
+				if not ok then error(err) end
 				local txpackets, txoctets = string.match(result, /送信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
 				local rxpackets, rxoctets = string.match(result, /受信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
+				-- string.match内で長音記号を使用するとエラー終了するので.でmatchさせる
+				local rxoverflow = string.match(result, "受信オ..バ..フロ..:%s+(%d*)")
 				local sent, err = control:send(
 					$"ifOutOctets{if=\"${n}\"} ${txoctets}\n"..
 					$"ifInOctets{if=\"${n}\"} ${rxoctets}\n"..
 					$"ifOutPkts{if=\"${n}\"} ${txpackets}\n"..
-					$"ifInPkts{if=\"${n}\"} ${rxpackets}\n"
+					$"ifInPkts{if=\"${n}\"} ${rxpackets}\n"..
+					$"ifInOverflow{if=\"${n}\"} ${rxoverflow}\n"
 				)
 				if err then error(err) end
 			end
@@ -153,6 +161,7 @@ while 1 do
 			)
 			if err then error(err) end
 
+			-- nat descritor
 			local sent, err = control:send(
 				"# TYPE natDescriptorCurrent counter\n"..
 				"# TYPE natDescriptorMax counter\n"
