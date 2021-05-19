@@ -12,6 +12,14 @@ schedule at 1 startup * lua /rtx1200_exporter.lua
 
 -- start prometheus exporter
 
+LUADEBUG = os.getenv("DEBUG")
+if ((LUADEBUG == nil) or (LUADEBUG == "0"))
+then
+  syslogout = "off"
+else
+  syslogout = "on"
+end
+
 tcp = rt.socket.tcp()
 tcp:setoption("reuseaddr", true)
 res, err = tcp:bind("*", 9100)
@@ -57,7 +65,7 @@ while 1 do
 			)
 			if err then error(err) end
 
-			local ok, result = rt.command("show environment")
+			local ok, result = rt.command("show environment", $"${syslogout}")
 			if not ok then error("command failed") end
 			local cpu5sec, cpu1min, cpu5min, memused = string.match(result, /CPU:\s*(\d+)%\(5sec\)\s*(\d+)%\(1min\)\s*(\d+)%\(5min\)\s*メモリ:\s*(\d+)% used/)
 			local temperature = string.match(result, /筐体内温度\(.*\): (\d+)/)
@@ -90,7 +98,7 @@ while 1 do
 			if err then error(err) end
 
 			for n = 1, 2 do
-				local ok, result = rt.command($"show status lan${n}")
+				local ok, result = rt.command($"show status lan${n}", $"${syslogout}")
 				if not ok then error("command failed") end
 				local txpackets, txoctets = string.match(result, /送信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
 				local rxpackets, rxoctets = string.match(result, /受信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
@@ -103,7 +111,7 @@ while 1 do
 				if err then error(err) end
 			end
 
-			local ok, result = rt.command("show ip connection summary")
+			local ok, result = rt.command("show ip connection summary", $"${syslogout}")
 			local v4session, v4channel
 			if (result == nil) then
 				v4session = 0
@@ -112,7 +120,7 @@ while 1 do
 				v4session, v4channel = string.match(result, /Total Session: (\d+)\s+Total Channel:\s*(\d+)/)
 			end
 
-			local ok, result = rt.command("show ipv6 connection summary")
+			local ok, result = rt.command("show ipv6 connection summary", $"${syslogout}")
 			local v6session, v6channel
 			if (result == nil) then
 				v6session = 0
@@ -131,7 +139,7 @@ while 1 do
 			)
 			if err then error(err) end
 
-			local ok, result = rt.command("show status dhcp")
+			local ok, result = rt.command("show status dhcp", $"${syslogout}")
 			local dhcptotal = string.match(result, /全アドレス数:\s*(\d+)/)
 			local dhcpexcluded = string.match(result, /除外アドレス数:\s*(\d+)/)
 			local dhcpassigned = string.match(result, /割り当て中アドレス数:\s*(\d+)/)
@@ -150,10 +158,10 @@ while 1 do
 				"# TYPE natDescriptorMax counter\n"
 			)
 			if err then error(err) end
-			local ok, result = rt.command("show nat descriptor address all")
+			local ok, result = rt.command("show nat descriptor address all", $"${syslogout}")
 			if not ok then print("command failed") end
 			for port in string.gmatch(result, "参照NATディスクリプタ : (%d+),") do
-				local ok, result = rt.command($"show nat descriptor masquerade port ${port} summary")
+				local ok, result = rt.command($"show nat descriptor masquerade port ${port} summary", $"${syslogout}")
 				if not ok then print("command failed") end
 				local cur, max = string.match(result, "(%d+)\/%s+(%d+)") do
 					local sent, err = control:send(
