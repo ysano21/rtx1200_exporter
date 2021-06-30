@@ -13,7 +13,7 @@ schedule at 1 startup * lua /rtx1200_exporter.lua
 -- start prometheus exporter
 
 -- config
-LUADEBUG = os.getenv("DEBUG")
+LUADEBUG = os.getenv("LUA_DEBUG")
 if ((LUADEBUG == nil) or (LUADEBUG == "0"))
 then
   syslogout = "off"
@@ -102,21 +102,23 @@ while 1 do
 			if err then error(err) end
 
 			-- nvr500/rtx830:2 rtx1200:3
-			for n = 1, 2 do
+			-- RTX830でgoto分がエラーになる為ifに変更
+			for n = 1, 4 do
 				local ok, result = rt.command($"show status lan${n}", $"${syslogout}")
-				if not ok then error(err) end
-				local txpackets, txoctets = string.match(result, /送信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
-				local rxpackets, rxoctets = string.match(result, /受信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
-				-- string.match内で長音記号を使用するとエラー終了するので.でmatchさせる
-				local rxoverflow = string.match(result, "受信オ..バ..フロ..:%s+(%d*)")
-				local sent, err = control:send(
-					$"ifOutOctets{if=\"${n}\"} ${txoctets}\n"..
-					$"ifInOctets{if=\"${n}\"} ${rxoctets}\n"..
-					$"ifOutPkts{if=\"${n}\"} ${txpackets}\n"..
-					$"ifInPkts{if=\"${n}\"} ${rxpackets}\n"..
-					$"ifInOverflow{if=\"${n}\"} ${rxoverflow}\n"
-				)
-				if err then error(err) end
+				if ok then -- workaround: rtx830 'goto' do not work
+					local txpackets, txoctets = string.match(result, /送信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
+					local rxpackets, rxoctets = string.match(result, /受信パケット:\s*(\d+)\s*パケット\((\d+)\s*オクテット\)/)
+					-- string.match内で長音記号を使用するとエラー終了するので.でmatchさせる
+					local rxoverflow = string.match(result, "受信オ..バ..フロ..:%s+(%d*)")
+					local sent, err = control:send(
+						$"ifOutOctets{if=\"${n}\"} ${txoctets}\n"..
+						$"ifInOctets{if=\"${n}\"} ${rxoctets}\n"..
+						$"ifOutPkts{if=\"${n}\"} ${txpackets}\n"..
+						$"ifInPkts{if=\"${n}\"} ${rxpackets}\n"..
+						$"ifInOverflow{if=\"${n}\"} ${rxoverflow}\n"
+					)
+					if err then error(err) end
+				end
 			end
 
 			local ok, result = rt.command("show ip connection summary", $"${syslogout}")
@@ -148,17 +150,19 @@ while 1 do
 			if err then error(err) end
 
 			local ok, result = rt.command("show status dhcp", $"${syslogout}")
-			local dhcptotal = string.match(result, /全アドレス数:\s*(\d+)/)
-			local dhcpexcluded = string.match(result, /除外アドレス数:\s*(\d+)/)
-			local dhcpassigned = string.match(result, /割り当て中アドレス数:\s*(\d+)/)
-			local dhcpavailable = string.match(result, /利用[^:]+?アドレス数:\s*(\d+)/)
-			local sent, err = control:send(
-				"# TYPE ipDhcp gauge\n"..
-				$"ipDhcp{} ${dhcptotal}\n"..
-				$"ipDhcp{type=\"excluded\"} ${dhcpexcluded}\n"..
-				$"ipDhcp{type=\"assigned\"} ${dhcpassigned}\n"..
-				$"ipDhcp{type=\"available\"} ${dhcpavailable}\n"
-			)
+			if (result ~= nil) then
+				local dhcptotal = string.match(result, /全アドレス数:\s*(\d+)/)
+				local dhcpexcluded = string.match(result, /除外アドレス数:\s*(\d+)/)
+				local dhcpassigned = string.match(result, /割り当て中アドレス数:\s*(\d+)/)
+				local dhcpavailable = string.match(result, /利用[^:]+?アドレス数:\s*(\d+)/)
+				local sent, err = control:send(
+					"# TYPE ipDhcp gauge\n"..
+					$"ipDhcp{} ${dhcptotal}\n"..
+					$"ipDhcp{type=\"excluded\"} ${dhcpexcluded}\n"..
+					$"ipDhcp{type=\"assigned\"} ${dhcpassigned}\n"..
+					$"ipDhcp{type=\"available\"} ${dhcpavailable}\n"
+				)
+			end
 			if err then error(err) end
 
 			-- nat descritor
@@ -168,16 +172,17 @@ while 1 do
 			)
 			if err then error(err) end
 			local ok, result = rt.command("show nat descriptor address all", $"${syslogout}")
-			if not ok then print("command failed") end
+			if not ok then error(result) end
 			for port in string.gmatch(result, "参照NATディスクリプタ : (%d+),") do
 				local ok, result = rt.command($"show nat descriptor masquerade port ${port} summary", $"${syslogout}")
-				if not ok then print("command failed") end
-				local cur, max = string.match(result, "(%d+)\/%s+(%d+)") do
-					local sent, err = control:send(
-						$"natDescriptorCurrent{port=\"${port}\"} ${cur}\n"..
-						$"natDescriptorMax{port=\"${port}\"} ${max}\n"
-					)
-					if err then error(err) end
+				if ok then
+					local cur, max = string.match(result, "(%d+)\/%s+(%d+)") do
+						local sent, err = control:send(
+							$"natDescriptorCurrent{port=\"${port}\"} ${cur}\n"..
+							$"natDescriptorMax{port=\"${port}\"} ${max}\n"
+						)
+						if err then error(err) end
+					end
 				end
 			end
 
